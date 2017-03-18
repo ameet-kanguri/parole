@@ -1,0 +1,271 @@
+---
+title: "Parole Data Problem"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+##### Author - Ameet Kanguri
+The parole dataset poses a unique challenge to delve into.From the given details that we know about the parolee like age, race, sex, state, sentence servered, crime type and number offences committed; can we predict accurately if a parolee is likely to violate his/her parole? We shall build a Logistic Regression model and a Tree model to predict the outcome of a parolee violating a parole given certain predictor variables.
+
+
+The Parole dataset has the following fields:
+
+    male: describes if the parolee is a male or female. 0-female,1-male
+
+    race: describes if the parolee is a white or nonwhite. 1-White, 2-Non white
+
+    age: Age of the parolee in years
+
+    state: State code of the parolee. 1-Other, 2-Kentucky,3-Lousiana,4-Virginia
+
+    time.served: Months served in prison (limited by the inclusion criteria to not exceed 6 months)
+
+    max.sentence: Maximum sentence in months (limited by the inclusion criteria to not exceed 18 months)
+
+    multiple offences: Describes if the parolee has been jailed for multiple offences. 1- yes, 2-no
+
+    crime: A code for the parolee's main crime. 1-Other,2-Larceny,3-drug,4-driving
+
+    violator: Is the parolee a violator. 1 - parole violated, 0 - parole completed without violation
+
+Set the location of the dataset on local system
+```{r}
+setwd('/Users/Ameet/Box Sync/Ameet/GitHub/R-Projects/parole')
+```
+
+Read the file into memory as a dataframe to conduct analysis.
+
+```{r}
+parole= read.csv("parole.csv")
+```
+
+###Data Preparation Phase
+In this phase, we review the parole data structure and make the necessary changes to conduct data analysis.
+A lot of the data is provided as integer values. Since this data is of categorical type, it makes more sense to convert it to a readable format. E.g. The male variable has values 0 and 1 to represent male or female. We shall update this to text values male/female.
+
+Review the data variables
+```{r}
+names(parole)
+```
+
+Review the range, mean and median for each variable of the dataset. This should give an initial insight about the variables in the dataset. E.g. The median age of a parolee is 33.70 and average is 34.51  
+```{r}
+summary(parole)
+```
+How many are parole violators in the sample data? Out of the 675 parolees 78 violated their parole
+```{r}
+table(parole$violator)  # how many are violators
+```
+
+Converting non-metric variables to factor:
+
+    Convert male variable from 0,1 to women and men
+
+    Convert race variable from 1,2 to White and 'Not White'
+
+    Convert state variable from 1,2,3,4 to Other, Kentucky, Louisiana  and Virginia
+
+    Convert crime variable from 1,2,3,3 to Other, Larceny, drug and driving
+
+    Convert multiple.offences variable from 0,1 to no and yes
+```{r}
+parole$male = factor(parole$male,
+                     levels = c(0,1),
+                     labels = c("women", "men"))
+parole$race = factor(parole$race,
+                     levels=c(1,2),
+                     labels=c("White","Not White"))
+parole$state = factor(parole$state, 
+                      levels = c(1,2,3,4),
+                      labels = c("Other","Kentucky","Louisiana","Virginia"))
+parole$crime = factor(parole$crime,
+                      levels = c(1,2,3,4),
+                      labels=c("Other","Larceny","drug","driving"))
+parole$multiple.offenses = factor(parole$multiple.offenses, 
+                                  levels = c(0,1),
+                                  labels = c("no", "yes"))
+```
+To build a statistical model and test it, we first split the given data into training and testing data sets. The statistical model will be built on the training data and tested on testing data. This approach will allow us to assess the accuracy of the statistical model. The data split ratio is training: 70% and testing: 30%.
+```{r}
+library(caTools)
+set.seed(199)
+split = sample.split(parole$violator,SplitRatio=0.7)
+train = subset(parole,split==TRUE)
+test = subset(parole,split==FALSE)
+```
+We now have 473 records to train the model and 202 records to test it on.
+```{r}
+nrow(train)
+nrow(test)
+```
+### Exploratory data analysis
+This completes the data preparation phase. 
+In the Exploratory data phase we will explore the data visually to get a better understanding of it. 
+
+##### 1) Sex: Men have a higher violation rate compared to women
+```{r}
+library(ggplot2)
+tapply(train$violator,train$male,mean)
+ggplot(data=train,aes(x=male,y=violator,fill=male)) + geom_bar(stat='summary',fun.y='mean')
+```
+#####2) Race: Non white race have a higher violation rate compared to white
+```{r}
+tapply(train$violator,train$race,mean)
+ggplot(data=train,aes(x=race,y=violator,fill=race)) + geom_bar(stat='summary',fun.y='mean')
+```
+##### 3) Age: Average Age of violator parolee is slightly lesser than non-violator parolee 
+```{r}
+tapply(train$age,train$violator,mean)
+ggplot(data=train,aes(x=factor(violator),y=age,fill=factor(violator)))+geom_bar(stat='summary',fun.y='mean')+
+  xlab('Violator') + scale_x_discrete(labels=c("0" = "Non-violator", "1" = "Violator"))+
+  scale_fill_discrete(name="Violators", breaks=c('0', '1'),labels=c('Non-Violator', 'Violator'))
+```
+
+This chart show the age frequency of parolee. Most parolees are in their early twenty's
+```{r}
+ggplot(data=train,aes(x=age,color=factor(multiple.offenses)))+geom_freqpoly(size=2) + ylab('Count of parolee') 
+```
+##### 4) State: Louisiana state has the highest violators
+```{r}
+tapply(train$violator,train$state,mean)
+ggplot(data=train,aes(x=state,y=violator,fill=state))+geom_bar(stat='summary',fun.y='mean')
+```
+##### 5) Time.served: Violators have served lesser time in prison than non-violators
+```{r}
+tapply(train$time.served,train$violator,mean)
+ggplot(data=train,aes(x=factor(violator),y=time.served,fill=factor(violator)))+geom_bar(stat='summary',fun.y='mean')+ xlab('Violator') + scale_x_discrete(labels=c("0" = "Non-violator", "1" = "Violator"))+
+  scale_fill_discrete(name="Violators",breaks=c('0', '1'),labels=c('Non-Violator', 'Violator'))
+```
+
+### Data Modeling Phase
+In this phase, we create statistical models on the training data set and then test it on the test data set. We calculate certain measures like Accuracy, Specificity and Sensitivity to check the efficacy of the statistical model. We plot the ROC (Receiver Operating Characteristic) curve to illustrate the performance of the binary classifier system on various thresholds. 
+First we create the Logistic Regression model with violator as the target variable and all other variables as the predictor variables
+```{r}
+model1 = glm(violator~.,train,family="binomial")
+```
+what is the interpretation of coefficient of "multiple.offenses"?
+"multiple.offenses" has p value <.01 showing strong co-relation.
+```{r}
+summary(model1)
+```
+##### A parolee who has committed multiple offenses is 5 times more likely to violate his/her parole
+```{r}
+exp(model1$coefficient['multiple.offensesyes'])
+```
+##### Consider a parolee who is a white male, aged 50 years at prison release, from the state of Maryland, served 3 months, had a maximum sentence of 12 months, did not commit multiple offenses, and committed a larceny. What are the odds of this individual being a violator? What is the probability of this person being a violator?
+```{r}
+varCoefficients = c(model1$coefficient[1:13]) # list of all coefficients from model
+varScores = c(1,1,1,50,0,0,0,3,12,0,1,0,0)    # list of all var based on above description
+logOdds = sum(varCoefficients*varScores)      # log odds is equal to sum of product of coeffs and var scores
+```
+Odds of being a violator:
+```{r}
+oddsOfBeingAViolator = exp(logOdds); oddsOfBeingAViolator
+```
+Probability of being a violator: There is a 14.5% chance that this person will be a repeat violator
+```{r}
+probabilityViolator = 1/(1+exp(-logOdds));probabilityViolator 
+```
+Now that we created the statistical model and tested it on the training data set, let us run it against the test dataset and see how well it performs.
+Applying predictions to the test sample
+```{r}
+predictTest = predict(model1,test,type="response")
+```
+What is the max predicted probability?
+```{r}
+max(predictTest)
+```
+## 
+##
+##### Confusion matrix, Accuracy, Specificity and Sensitivity
+Construct a Classification table or Confusion matrix using 0.5 threshold (cutoff)
+```{r}
+cMatrix = table(test$violator,predictTest>0.50); cMatrix
+```
+Accuracy :Higher the value, more accurate the statistical model
+This model has 85% accuracy rate.
+```{r}
+accuracy = sum(cMatrix[1,1],cMatrix[2,2])/nrow(test); accuracy
+```
+Specificity -> True Negative/ (True Negative+ False Positive)
+
+Sensitivity   -> True Positive/ (False negative _ True Positive)
+```{r}
+specificity = cMatrix[1,1]/sum(cMatrix[1,1],cMatrix[1,2]); specificity
+sensitivity = cMatrix[2,2]/sum(cMatrix[2,1],cMatrix[2,2]); sensitivity
+```
+To check the performance of the model for different cutoff values, we increase the threshold to .70.
+
+Specificity is important as False Positives are costly errors for this data. For high specificity, threshold should be set high.
+
+Accuracy: 87%
+
+Specificity: 96%
+
+Sensitivity:17%
+```{r}
+x = table(test$violator,predictTest>0.70);x
+accuracy = sum(x[1,1],x[2,2])/nrow(test); accuracy
+specificity = x[1,1]/sum(x[1,1],x[1,2]); specificity
+sensitivity = x[2,2]/sum(x[2,1],x[2,2]); sensitivity
+```
+## 
+## 
+## 
+##### ROC Curves 
+ROC curves allow us to visualize the impact of different thresholds on Specificity and Sensitivity. Area Under Curve (AUC) is model performance measure that is independent of any particular threshold.
+
+High threshold => Higher specificity and Lower sensitivity   
+
+Low threshold => Lower specificity and higher sensitivity
+```{r}
+library(ROCR)
+ROCRpred1 = prediction(predictTest,test$violator)
+as.numeric(performance(ROCRpred1,"auc")@y.values) # auc measure
+ROCRperf1 = performance(ROCRpred1,"tpr","fpr")
+plot(ROCRperf1,colorize=TRUE,print.cutoffs.at=seq(0,1,0.2),text.adj=c(-0.3,2),xlab="False Positive Rate (1 - Specificity) ",ylab="True Positive Rate (Sensitivity)") # color coded and annotated ROC curve
+
+```
+##### Compare Logistic Regression model to a Tree model
+How will this compare to a tree model? 
+
+```{r}
+library(rpart)
+library(rpart.plot)
+library(rattle)
+tree = rpart(violator~.,data=train,method="class",control=rpart.control(minbucket=2))
+prp(tree)
+fancyRpartPlot(tree)
+predTree = predict(tree,newdata=test,type="class")
+```
+## 
+## 
+## 
+##### Confusion matrix, Accuracy, Specificity and Sensitivity of the tree Model
+
+Accuracy is 85%
+
+Specificity is 91%
+
+Sensitivity is 43%
+```{r}
+x = table(test$violator,predTree);x
+accuracy = sum(x[1,1],x[2,2])/nrow(test); accuracy
+specificity = x[1,1]/sum(x[1,1],x[1,2]); specificity
+sensitivity = x[2,2]/sum(x[2,1],x[2,2]); sensitivity
+```
+##### Construct ROC curve for the tree Model to select the best threshold
+```{r}
+predTreeProb = predict(tree,newdata=test,type="prob")
+ROCRpred = prediction(predTreeProb[,2],test$violator)
+as.numeric(performance(ROCRpred,"auc")@y.values) # auc measure
+## construct plot
+ROCRperf = performance(ROCRpred,"tpr","fpr")
+plot(ROCRperf,colorize=TRUE,print.cutoffs.at=seq(0,1,0.2),text.adj=c(-0.3,2),xlab="False Positive Rate (1 - Specificity) ",ylab="True Positive Rate (Sensitivity)") # color coded and annotated ROC curve
+```
+##### Conclusion
+The decision to select one model over the other models would depend on whether the business needs a model with low "False Positive Rate" (1- Specificity) or high "True Positive Rate" (Sensitivity) metric.
+
+In the parole dataset, since the focus is on lower False Positive Rate metric, the statistical model with the higher Specificity metric would be preferred.
+
+The Logistic Regression model performs better than the Tree model in this scenario.
